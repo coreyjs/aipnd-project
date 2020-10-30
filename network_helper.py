@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -85,11 +86,11 @@ def create_model(arch_type: str, hidden_units: int, out_features: int):
     return model
 
 
-def get_criterion():
+def get_criterion() -> nn.NLLLoss:
     return nn.NLLLoss()
 
 
-def get_optimizer(model, state_dict=None):
+def get_optimizer(model, state_dict=None) -> optim.Adam:
     """
     returns an instanitated Adam optimizer, and will load
     state if applicable
@@ -101,7 +102,7 @@ def get_optimizer(model, state_dict=None):
     return optimizer
 
 
-def get_classifier(units: int, out_features: int):
+def get_classifier(units: int, out_features: int) -> None:
     return nn.Sequential(
         OrderedDict([
             ('fc1', nn.Linear(25088, units)),
@@ -112,7 +113,7 @@ def get_classifier(units: int, out_features: int):
         ]))
 
 
-def validate_model(model, criterion, dataloader, device):
+def validate_model(model, criterion, dataloader, device) -> (float, float):
     model.eval()
     model.to(device=device)
 
@@ -131,7 +132,7 @@ def validate_model(model, criterion, dataloader, device):
     return test_loss / len(dataloader), accuracy / len(dataloader)
 
 
-def train_model(model, use_gpu: bool, epochs: int, dataloader):
+def train_model(model, use_gpu: bool, epochs: int, dataloader) -> Tuple:
     criterion, optimizer = get_criterion(), get_optimizer(model=model)
     steps, running_loss = 0, 0
     print_every = 15
@@ -176,7 +177,7 @@ def train_model(model, use_gpu: bool, epochs: int, dataloader):
     return model, optimizer
 
 
-def save_checkpoint(model, path, image_datasets, epochs, optimizer, arch):
+def save_checkpoint(model, path, image_datasets, epochs, optimizer, arch) -> None:
     model.class_to_idx = image_datasets['train']
     state = {
         'model': arch,
