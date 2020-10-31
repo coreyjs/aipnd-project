@@ -57,7 +57,8 @@ def main(args):
     model, optimizer = nh.train_model(model=model, use_gpu=use_gpu, epochs=args.epochs, dataloader=dataloaders)
 
     nh.save_checkpoint(model=model, path=args.save_dir, image_datasets=image_datasets,
-                       epochs=args.epochs, optimizer=optimizer, arch=args.arch)
+                       epochs=args.epochs, optimizer=optimizer, arch=args.arch,
+                       hidden_units=args.hidden_units, out_features=class_count)
 
 
 if __name__ == '__main__':

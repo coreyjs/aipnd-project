@@ -1,15 +1,17 @@
+__author__ = 'Corey Schaf <coreyjs@hey.com>'
+__version__ = '1.0.0'
+__license__ = 'MIT'
+
+
 from collections import OrderedDict
 from typing import Tuple
 
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
 
+import torch
 from torch import nn
 from torch import optim
-import torch.nn.functional as F
 from torchvision import datasets, transforms, models
-
+import image_helper as ih
 
 arch_types = {
     'densenet121': models.densenet121,
@@ -37,6 +39,11 @@ def validate_arch(arch: str) -> bool:
 
 
 def load_dataset(data_dir: str) -> (datasets.ImageFolder, torch.utils.data.DataLoader):
+    """
+    Load our image sets into training, testing and validation sets.
+    :param data_dir:
+    :return: A tuple containing our image sets and dataloaders
+    """
     data_groups = ['train', 'test', 'valid']
     data_dirs = {
         'train': data_dir + '/train',
@@ -75,6 +82,13 @@ def load_dataset(data_dir: str) -> (datasets.ImageFolder, torch.utils.data.DataL
 
 
 def create_model(arch_type: str, hidden_units: int, out_features: int):
+    """
+    Creates and returns a configured model with the architecture of arch_type
+    :param arch_type:
+    :param hidden_units:
+    :param out_features:
+    :return:
+    """
     model = arch_types[arch_type]
     model = model(pretrained=True)
 
@@ -87,6 +101,10 @@ def create_model(arch_type: str, hidden_units: int, out_features: int):
 
 
 def get_criterion() -> nn.NLLLoss:
+    """
+    Returns an instance of NLLLoss, since our output is logsoftmax
+    :return:
+    """
     return nn.NLLLoss()
 
 
@@ -102,7 +120,12 @@ def get_optimizer(model, state_dict=None) -> optim.Adam:
     return optimizer
 
 
-def get_classifier(units: int, out_features: int) -> None:
+def get_classifier(units: int, out_features: int) -> nn.Sequential:
+    """
+    :param units:
+    :param out_features:
+    :return: nn.Sequential
+    """
     return nn.Sequential(
         OrderedDict([
             ('fc1', nn.Linear(25088, units)),
@@ -114,21 +137,30 @@ def get_classifier(units: int, out_features: int) -> None:
 
 
 def validate_model(model, criterion, dataloader, device) -> (float, float):
+    """
+    This runs a validation pass against our trained model to determine loss and accuracy
+    :param model:
+    :param criterion:
+    :param dataloader:
+    :param device:
+    :return:
+    """
     model.eval()
     model.to(device=device)
 
     accuracy, test_loss = 0, 0
-    for inputs, labels in dataloader:
-        inputs, labels = inputs.to(device), labels.to(device)
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device)
 
-        output = model.forward(inputs)
-        test_loss += criterion(output, labels).item()
+            output = model.forward(inputs)
+            test_loss += criterion(output, labels).item()
 
-        ps = torch.exp(output)
-        top_p, top_class = ps.topk(1, dim=1)
-        equals = top_class == labels.view(*top_class.shape)
-        accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
-
+            ps = torch.exp(output)
+            top_p, top_class = ps.topk(1, dim=1)
+            equals = top_class == labels.view(*top_class.shape)
+            accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
+    model.train()
     return test_loss / len(dataloader), accuracy / len(dataloader)
 
 
@@ -177,18 +209,80 @@ def train_model(model, use_gpu: bool, epochs: int, dataloader) -> Tuple:
     return model, optimizer
 
 
-def save_checkpoint(model, path, image_datasets, epochs, optimizer, arch) -> None:
-    model.class_to_idx = image_datasets['train']
+def save_checkpoint(model, path, image_datasets, epochs, optimizer,
+                    arch, hidden_units, out_features) -> None:
+    """
+    This saves the neural net model in its current state, along with any
+    hyperparameters, optimizer state and meta information
+    :param model:
+    :param path:
+    :param image_datasets:
+    :param epochs:
+    :param optimizer:
+    :param arch:
+    :param hidden_units:
+    :param out_features:
+    :return:
+    """
+    model.class_to_idx = image_datasets['train'].class_to_idx
     state = {
         'model': arch,
         'epoch': epochs,
         'state_dict': model.state_dict(),
         'optimizer': optimizer.state_dict(),
-        'class_to_idx': model.class_to_idx
+        'class_to_idx': model.class_to_idx,
+        'hidden_units': hidden_units,
+        'out_features': out_features
     }
     torch.save(state, f'{path}/checkpoint-{arch}.pth')
     print('Info -- Checkpoint saved to: ' + f'{path}/checkpoint-{arch}.pth')
 
 
-def load_checkpoint():
-    pass
+def load_checkpoint(checkpoint_path):
+    """
+    Loads a neural net model from the given path of the pytorch checkpoint file.
+    :param checkpoint_path:
+    :return:
+    """
+    checkpoint = torch.load(checkpoint_path)
+    if checkpoint['model'] not in arch_types:
+        raise Exception("Model type not valid")
+
+    model = create_model(arch_type=checkpoint['model'],
+                         hidden_units=checkpoint['hidden_units'],
+                         out_features=checkpoint['out_features'])
+
+    model.load_state_dict(checkpoint['state_dict'])
+    model.class_to_idx = checkpoint['class_to_idx']
+
+    optimizer = get_optimizer(model=model, state_dict=checkpoint['optimizer'])
+
+    return model, optimizer
+
+
+def predict(image_path, model, categories, topk=5, use_gpu=True):
+    ''' Predict the class (or classes) of an image using a trained deep learning model.
+    '''
+    device = torch.device("cuda" if use_gpu else "cpu")
+
+    model.eval()
+    model.to(device=device)
+
+    # Load image, convert to nparray and then to a tensor
+    tensor = torch.from_numpy(ih.process_image(image_path)).to(device, dtype=torch.float)
+    tensor = tensor.unsqueeze(0)
+
+    output = model.forward(tensor)
+
+    probabilities = torch.exp(output)
+
+    top_ps, top_classes = probabilities.data.topk(topk)
+    top_ps, top_classes = top_ps.cpu(), top_classes.cpu()
+
+    class_to_idx_inverse = {model.class_to_idx[i]: i for i in model.class_to_idx}
+
+    mapped_labels = []
+    for label in top_classes.numpy()[0]:
+        mapped_labels.append(class_to_idx_inverse[label])
+
+    return top_ps.numpy()[0], mapped_labels
