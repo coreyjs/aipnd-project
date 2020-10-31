@@ -3,6 +3,9 @@
 
 > Project code for Udacity's AI Programming with Python Nanodegree program.
 
+![Screenshot 2020-10-31 101251](https://user-images.githubusercontent.com/1228838/97781440-c40e9600-1b61-11eb-9bc5-4096fe527443.png)
+![Screenshot 2020-10-31 1013243](https://user-images.githubusercontent.com/1228838/97781441-c40e9600-1b61-11eb-8bc7-272af114d698.png)
+
 
 In this project we train an image classifier to recognize the different species of flowers.
 The first part of this project can be found in the notebook `Image Classifier Project.ipynb`.  Here is
